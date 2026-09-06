@@ -188,27 +188,34 @@ abstract class LinuxPlatformSettings : AbstractPlatformSettings() {
 
     /**
      * User after-install script concatenated after Nucleus's own template (desktop
-     * integration, AppArmor, optional polkit silent-update helper). electron-builder
-     * macros such as `${sanitizedProductName}` and `${executable}` are substituted.
+     * integration, AppArmor, optional polkit silent-update helper). Honored by both
+     * JVM and GraalVM Deb/Rpm/Pacman packages. electron-builder macros such as
+     * `${sanitizedProductName}` and `${executable}` are substituted — keep them in
+     * single quotes so the shell does not expand them before substitution.
      */
     val afterInstall: RegularFileProperty = objects.fileProperty()
 
     /**
      * User after-remove script concatenated after Nucleus's own template (polkit
-     * policy cleanup when silent update is enabled).
+     * policy cleanup when silent update is enabled). Honored by both JVM and
+     * GraalVM Deb/Rpm/Pacman packages. Use `'${sanitizedProductName}'` (single
+     * quotes) for electron-builder substitution.
      */
     val afterRemove: RegularFileProperty = objects.fileProperty()
 
     /**
      * User before-install script passed to fpm (`--before-install`). Run as root
      * before the payload is unpacked — stop a packaged systemd service here so
-     * binaries in `/opt` can be replaced.
+     * binaries in `/opt` can be replaced. Honored by both JVM and GraalVM
+     * Deb/Rpm/Pacman packages.
      */
     val beforeInstall: RegularFileProperty = objects.fileProperty()
 
     /**
      * User before-remove script passed to fpm (`--before-remove`). Run as root
-     * before the payload is deleted.
+     * before the payload is deleted. Honored by both JVM and GraalVM
+     * Deb/Rpm/Pacman packages. Use `'${sanitizedProductName}'` so electron-builder
+     * substitutes the unit name; `"${sanitizedProductName}"` is left unsubstituted.
      */
     val beforeRemove: RegularFileProperty = objects.fileProperty()
 
