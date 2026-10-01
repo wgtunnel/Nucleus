@@ -95,6 +95,20 @@ abstract class AbstractNotarizationTask
             }
 
             if (result.exitValue != 0 || stdout.contains("status: Invalid")) {
+                // `submit --wait` polls Apple for however long processing takes and can fail on
+                // its own (dropped connection, client-side timeout) independently of whether the
+                // submission actually finished and was accepted server-side. We should not trust the exit
+                // code alone. Instead, ask Apple directly before failing the build over a flaky wait.
+                val sid = submissionId
+                if (sid != null && isAccepted(notarization, sid)) {
+                    logger.warn(
+                        "'notarytool submit --wait' reported exit code ${result.exitValue} for " +
+                            "'${packageFile.name}', but submission $sid was actually " +
+                            "accepted by Apple - continuing.",
+                    )
+                    return
+                }
+
                 val appleLog = fetchNotarizationLog(notarization, submissionId)
                 val errMsg =
                     buildString {
@@ -112,6 +126,37 @@ abstract class AbstractNotarizationTask
                         }
                     }
                 error(errMsg)
+            }
+        }
+
+        /**
+         * Double-checks a submission's real status via `notarytool info`, used when
+         * `submit --wait` itself reports failure. That poll can fail on its own even after
+         * Apple has already finished and accepted the submission.
+         */
+        private fun isAccepted(
+            notarization: ValidatedMacOSNotarizationSettings,
+            submissionId: String,
+        ): Boolean {
+            val (authArgs, stdin) = notarization.auth.toNotaryToolArgs()
+            return try {
+                var infoOutput = ""
+                runExternalTool(
+                    tool = MacUtils.xcrun,
+                    args =
+                        buildList {
+                            add("notarytool")
+                            add("info")
+                            add(submissionId)
+                            addAll(authArgs)
+                        },
+                    stdinStr = stdin,
+                    processStdout = { infoOutput = it },
+                )
+                STATUS_REGEX.find(infoOutput)?.groupValues?.get(1) == "Accepted"
+            } catch (e: IllegalStateException) {
+                logger.warn("Could not verify actual notarization status for $submissionId: ${e.message}")
+                false
             }
         }
 
@@ -189,5 +234,6 @@ abstract class AbstractNotarizationTask
 
         companion object {
             private val SUBMISSION_ID_REGEX = Regex("""^\s*id:\s*([0-9a-fA-F-]+)\s*$""", RegexOption.MULTILINE)
+            private val STATUS_REGEX = Regex("""^\s*status:\s*(\S+)\s*$""", RegexOption.MULTILINE)
         }
     }
